@@ -67,8 +67,12 @@ async def startup_event():
         else:
             print("[INFO] Usuario root ya existe, no se modifica.")
 
-# TODO: Incluir routers a medida que se implementen
-# app.include_router(...)
+# Incluir routers
+from app.routers import miembro as r_miembro
+from app.routers import disciplina as r_disciplina
+
+app.include_router(r_miembro.router)
+app.include_router(r_disciplina.router)
 
 @app.get("/")
 async def root():
