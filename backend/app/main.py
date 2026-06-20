@@ -70,9 +70,13 @@ async def startup_event():
 # Incluir routers
 from app.routers import miembro as r_miembro
 from app.routers import disciplina as r_disciplina
+from app.routers import instructor as r_instructor
+from app.routers import membresia as r_membresia
 
 app.include_router(r_miembro.router)
 app.include_router(r_disciplina.router)
+app.include_router(r_instructor.router)
+app.include_router(r_membresia.router)
 
 @app.get("/")
 async def root():
