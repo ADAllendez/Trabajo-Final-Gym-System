@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text
+from sqlalchemy import Column, Float, Integer, String, Text
 from app.models import Base
 
 class Usuario(Base):
@@ -17,3 +17,8 @@ class Usuario(Base):
     correo = Column(String(100), nullable=True)
     dni = Column(String(20), unique=True, nullable=True)
     foto = Column(Text, nullable=True)  # base64 o URL
+
+    #finanzas
+    sueldo_mensual = Column(Float, nullable=True, default=0.0)
+    dia_de_pago = Column(Integer, nullable=True)  # Ej: 5 = cobra el día 5 de cada mes
+    fecha_contratacion = Column(String(20), nullable=True)  # Fecha de inicio como string "YYYY-MM-DD"

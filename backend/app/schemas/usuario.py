@@ -16,6 +16,9 @@ class UsuarioBase(BaseModel):
     telefono: Optional[str] = None
     correo: Optional[str] = None
     dni: Optional[str] = None
+    sueldo_mensual: Optional[float] = None
+    dia_de_pago: Optional[int] = None      # Número del día del mes: 1-31
+    fecha_contratacion: Optional[str] = None
     foto: Optional[str] = None
 
     @field_validator("username", mode="before")
@@ -96,6 +99,26 @@ class UsuarioBase(BaseModel):
             raise ValueError("El DNI debe tener entre 6 y 11 dígitos")
         return v
 
+    @field_validator("sueldo_mensual", mode="before")
+    @classmethod
+    def validar_sueldo(cls, v):
+        if v is None:
+            return None
+        v = float(v)
+        if v < 0:
+            raise ValueError("El sueldo mensual no puede ser negativo")
+        return v
+
+    @field_validator("dia_de_pago", mode="before")
+    @classmethod
+    def validar_dia_de_pago(cls, v):
+        if v is None:
+            return None
+        v = int(v)
+        if not (1 <= v <= 31):
+            raise ValueError("El día de pago debe ser entre 1 y 31")
+        return v
+
 
 class UsuarioCreate(UsuarioBase):
     password: str
@@ -119,6 +142,9 @@ class UsuarioUpdate(BaseModel):
     telefono: Optional[str] = None
     correo: Optional[str] = None
     dni: Optional[str] = None
+    sueldo_mensual: Optional[float] = None
+    dia_de_pago: Optional[int] = None
+    fecha_contratacion: Optional[str] = None
     foto: Optional[str] = None
 
     @field_validator("username", mode="before")
@@ -162,6 +188,25 @@ class UsuarioUpdate(BaseModel):
         v = int(v)
         if v < 18 or v > 80:
             raise ValueError("La edad debe estar entre 18 y 80 años")
+        return v
+
+    @field_validator("dia_de_pago", mode="before")
+    @classmethod
+    def validar_dia_de_pago(cls, v):
+        if v is None:
+            return None
+        v = int(v)
+        if not (1 <= v <= 31):
+            raise ValueError("El día de pago debe ser entre 1 y 31")
+        return v
+
+    @field_validator("sueldo_mensual", mode="before")
+    @classmethod
+    def validar_sueldo(cls, v):
+        if v is None:
+            return None
+        if float(v) < 0:
+            raise ValueError("El sueldo mensual no puede ser negativo")
         return v
 
     @field_validator("correo", mode="before")
