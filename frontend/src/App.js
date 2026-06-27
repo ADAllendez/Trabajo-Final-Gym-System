@@ -5,6 +5,9 @@ import LoginPages from "./pages/LoginPages";
 import HomePage from "./pages/HomePage";
 import MiembrosPage from "./pages/MiembrosPage";
 import DisciplinasPage from "./pages/DisciplinasPage";
+import InstructoresPage from "./pages/InstructoresPage";
+import MembresiaPage from "./pages/MembresiaPage";
+import DeudoresPage from "./pages/DeudoresPage";
 
 function RutaPrivada({ children }) {
   const { usuario, cargando } = useContext(AuthContext);
@@ -21,6 +24,9 @@ function App() {
           <Route path="/" element={<RutaPrivada><HomePage /></RutaPrivada>} />
           <Route path="/miembros" element={<RutaPrivada><MiembrosPage /></RutaPrivada>} />
           <Route path="/disciplinas" element={<RutaPrivada><DisciplinasPage /></RutaPrivada>} />
+          <Route path="/instructores" element={<RutaPrivada><InstructoresPage /></RutaPrivada>} />
+          <Route path="/membresias" element={<RutaPrivada><MembresiaPage /></RutaPrivada>} />
+          <Route path="/deudores" element={<RutaPrivada><DeudoresPage /></RutaPrivada>} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
