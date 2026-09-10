@@ -2,12 +2,13 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from datetime import date
+from datetime import date, timedelta
 
 from app.config.database import get_db
 from app.models.membresia import Membresia
 from app.models.miembro import Miembro
 from app.models.disciplina import Disciplina
+from app.models.instructor import Instructor
 from app.schemas.membresia import MembresiaIn, MembresiaOut
 
 router = APIRouter(prefix="/membresias", tags=["Membresias"])
@@ -17,8 +18,10 @@ router = APIRouter(prefix="/membresias", tags=["Membresias"])
 @router.get("/", response_model=list[MembresiaOut])
 async def listar_membresias(db: AsyncSession = Depends(get_db)):
     hoy = date.today()
+    # Un miembro se desactiva sólo cuando su membresía lleva MÁS de 5 días vencida
+    limite_desactivacion = hoy - timedelta(days=5)
 
-    # Auto-actualizar estados vencidos
+    # Auto-actualizar estados vencidos (el estado cambia al día siguiente del vencimiento)
     res_venc = await db.execute(
         select(Membresia).where(
             Membresia.fecha_vencimiento < hoy,
@@ -32,7 +35,8 @@ async def listar_membresias(db: AsyncSession = Depends(get_db)):
             m.estado = "vencido"
             ids_miembros_afectados.add(m.id_miembro)
 
-        # Desactivar miembros que no tienen ninguna membresía vigente
+        # Desactivar miembros cuya membresía venció hace MÁS de 5 días
+        # y no tienen ninguna membresía vigente (período de gracia de 5 días)
         for id_m in ids_miembros_afectados:
             res_vigente = await db.execute(
                 select(Membresia).where(
@@ -41,12 +45,21 @@ async def listar_membresias(db: AsyncSession = Depends(get_db)):
                 )
             )
             if not res_vigente.scalar_one_or_none():
-                res_miembro = await db.execute(
-                    select(Miembro).where(Miembro.id_miembro == id_m)
+                # Verificar que la membresía más reciente vencida supere los 5 días de gracia
+                res_reciente = await db.execute(
+                    select(Membresia).where(
+                        Membresia.id_miembro == id_m,
+                        Membresia.fecha_vencimiento < hoy,
+                        Membresia.fecha_vencimiento <= limite_desactivacion,
+                    )
                 )
-                miembro = res_miembro.scalar_one_or_none()
-                if miembro and miembro.activo:
-                    miembro.activo = False
+                if res_reciente.scalar_one_or_none():
+                    res_miembro = await db.execute(
+                        select(Miembro).where(Miembro.id_miembro == id_m)
+                    )
+                    miembro = res_miembro.scalar_one_or_none()
+                    if miembro and miembro.activo:
+                        miembro.activo = False
 
         await db.commit()
 
@@ -56,14 +69,19 @@ async def listar_membresias(db: AsyncSession = Depends(get_db)):
             Miembro.nombre.label("m_nombre"),
             Miembro.apellido.label("m_apellido"),
             Disciplina.nombre.label("d_nombre"),
+            Instructor.nombre.label("i_nombre"),
+            Instructor.apellido.label("i_apellido"),
         )
         .join(Miembro, Membresia.id_miembro == Miembro.id_miembro)
         .join(Disciplina, Membresia.id_disciplina == Disciplina.id_disciplina)
+        .outerjoin(Instructor, Instructor.id_disciplina == Membresia.id_disciplina)
+        .where(Miembro.activo == True)  # Solo membresías de miembros activos
     )
     rows = result.all()
 
     membresias = []
-    for mem, m_nombre, m_apellido, d_nombre in rows:
+    for mem, m_nombre, m_apellido, d_nombre, i_nombre, i_apellido in rows:
+        nombre_instructor = f"{i_nombre} {i_apellido}" if i_nombre else None
         membresias.append({
             "id_membresia": mem.id_membresia,
             "id_miembro": mem.id_miembro,
@@ -74,6 +92,7 @@ async def listar_membresias(db: AsyncSession = Depends(get_db)):
             "precio_abonado": mem.precio_abonado,
             "nombre_miembro": f"{m_nombre} {m_apellido}",
             "nombre_disciplina": d_nombre,
+            "nombre_instructor": nombre_instructor,
         })
     return membresias
 
@@ -220,7 +239,6 @@ async def renovar_membresia(id_membresia: int, db: AsyncSession = Depends(get_db
     if miembro and not miembro.activo:
         miembro.activo = True
 
-    from datetime import timedelta
     hoy = date.today()
 
     try:
@@ -242,19 +260,32 @@ async def renovar_membresia(id_membresia: int, db: AsyncSession = Depends(get_db
         raise HTTPException(status_code=400, detail="Error al renovar la membresía")
 
 
-# DESACTIVAR miembros cuya última membresía venció
+# DESACTIVAR miembros cuya última membresía venció (respetando período de gracia de 5 días)
 @router.post("/check-vencidos")
 async def desactivar_vencidos(db: AsyncSession = Depends(get_db)):
     """
-    Recorre todos los miembros activos y desactiva a los que no tienen
-    ninguna membresía activa o futura (su última membresía venció).
+    Recorre todos los miembros activos que ALGUNA VEZ tuvieron una membresía
+    y desactiva a los que ya no tienen ninguna vigente y superaron el período
+    de gracia de 5 días.
+    No toca a miembros reactivados manualmente que aún no tienen nueva membresía.
     """
     hoy = date.today()
+    limite_desactivacion = hoy - timedelta(days=5)
     res = await db.execute(select(Miembro).where(Miembro.activo == True))
     miembros_activos = res.scalars().all()
 
     desactivados = []
     for m in miembros_activos:
+        # Verificar si el miembro tiene AL MENOS una membresía registrada (pasada o presente)
+        res_tiene_mem = await db.execute(
+            select(Membresia).where(Membresia.id_miembro == m.id_miembro)
+        )
+        tiene_alguna = res_tiene_mem.scalar_one_or_none()
+        if tiene_alguna is None:
+            # Nunca tuvo membresía (o fue reactivado manualmente): no tocar
+            continue
+
+        # Verificar si tiene alguna membresía vigente
         res_mem = await db.execute(
             select(Membresia)
             .where(
@@ -264,8 +295,17 @@ async def desactivar_vencidos(db: AsyncSession = Depends(get_db)):
         )
         vigente = res_mem.scalar_one_or_none()
         if vigente is None:
-            m.activo = False
-            desactivados.append(m.id_miembro)
+            # Solo desactivar si la membresía más reciente superó los 5 días de gracia
+            res_vencida_grace = await db.execute(
+                select(Membresia).where(
+                    Membresia.id_miembro == m.id_miembro,
+                    Membresia.fecha_vencimiento < hoy,
+                    Membresia.fecha_vencimiento <= limite_desactivacion,
+                )
+            )
+            if res_vencida_grace.scalar_one_or_none():
+                m.activo = False
+                desactivados.append(m.id_miembro)
 
     await db.commit()
     return {"desactivados": desactivados, "total": len(desactivados)}

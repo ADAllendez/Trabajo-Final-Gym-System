@@ -24,7 +24,12 @@ if not DATABASE_URL:
 else:
     print("[DB] Usando base de datos configurada en .env")
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_pre_ping=True,    # verifica la conexión antes de usarla (reconecta si MySQL la cerró)
+    pool_recycle=1800,     # recicla conexiones cada 30 min para evitar timeouts del servidor
+)
 
 AsyncSessionLocal = sessionmaker(
     bind=engine,

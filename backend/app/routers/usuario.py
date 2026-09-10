@@ -32,6 +32,17 @@ def crear_access_token(data: dict):
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
+from pydantic import BaseModel as PydanticBaseModel
+
+# PIN de recuperación — solo el dueño del gimnasio lo conoce
+PIN_RECUPERACION = "12345"
+
+class RecuperarPasswordRequest(PydanticBaseModel):
+    username: str
+    codigo: str        # PIN para root / DNI para trabajadores
+    nueva_password: str
+
+
 # ── Endpoints ─────────────────────────────────────────────
 
 @router.post("/login")
@@ -43,6 +54,39 @@ async def login(datos: OAuth2PasswordRequestForm = Depends(), db: AsyncSession =
     token_data = {"sub": user.username, "rol": user.rol, "id": user.id_usuario}
     token = crear_access_token(token_data)
     return {"access_token": token, "token_type": "bearer"}
+
+
+@router.post("/recuperar-password")
+async def recuperar_password(datos: RecuperarPasswordRequest, db: AsyncSession = Depends(get_db)):
+    """Restablece la contraseña usando PIN (root) o DNI (trabajadores)."""
+    # 1. Buscar al usuario
+    result = await db.execute(select(Usuario).where(Usuario.username == datos.username))
+    usuario = result.scalar_one_or_none()
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    # 2. Validar el código según el rol (primero, antes de procesar la nueva contraseña)
+    if usuario.rol == "root":
+        if datos.codigo != PIN_RECUPERACION:
+            raise HTTPException(status_code=403, detail="El PIN ingresado es incorrecto")
+    else:
+        if not usuario.dni:
+            raise HTTPException(
+                status_code=403,
+                detail="Tu cuenta no tiene un DNI registrado. Contactá al administrador para que restablezca tu contraseña."
+            )
+        if datos.codigo.strip() != usuario.dni.strip():
+            raise HTTPException(status_code=403, detail="El DNI ingresado no coincide con el registrado en tu cuenta")
+
+    # 3. Validar la nueva contraseña
+    if not datos.nueva_password or len(datos.nueva_password.strip()) < 4:
+        raise HTTPException(status_code=400, detail="La nueva contraseña debe tener al menos 4 caracteres")
+
+    # 4. Actualizar
+    usuario.password_hash = hash_password(datos.nueva_password)
+    await db.commit()
+    return {"detail": "Contraseña restablecida exitosamente"}
+
 
 
 async def _get_user_from_token(authorization: str, db: AsyncSession) -> Usuario:
@@ -79,6 +123,15 @@ async def actualizar_mi_perfil(
 ):
     """Actualiza el perfil del usuario autenticado (foto, nombre, apellido, etc.)."""
     user = await _get_user_from_token(authorization, db)
+
+    # Si se quiere cambiar el username, verificar que no esté en uso por otro usuario
+    if datos.username is not None and datos.username != user.username:
+        result = await db.execute(
+            select(Usuario).where(Usuario.username == datos.username, Usuario.id_usuario != user.id_usuario)
+        )
+        if result.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="El nombre de usuario ya está en uso")
+
     for campo, valor in datos.model_dump(exclude_unset=True).items():
         if campo == "password" and valor:
             setattr(user, "password_hash", hash_password(valor))

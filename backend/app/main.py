@@ -76,6 +76,7 @@ from app.routers import finanzas as r_finanzas
 from app.routers import usuario as r_usuario
 from app.routers import gasto as r_gasto
 from app.routers import pago_dia as r_pago_dia
+from app.routers import cierre_financiero as r_cierre
 
 app.include_router(r_miembro.router)
 app.include_router(r_disciplina.router)
@@ -84,6 +85,7 @@ app.include_router(r_membresia.router)
 app.include_router(r_finanzas.router)
 app.include_router(r_gasto.router)
 app.include_router(r_pago_dia.router)
+app.include_router(r_cierre.router)
 app.include_router(r_usuario.router)
 
 @app.get("/")

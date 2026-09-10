@@ -1,7 +1,7 @@
 import React, { useContext, useState, useEffect, useRef } from "react";
 import { NavLink } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
-import { crearUsuario, getUsuarios, eliminarUsuario, getMe, updateMe } from "../api/usuarios";
+import { crearUsuario, getUsuarios, eliminarUsuario, actualizarUsuario, getMe, updateMe } from "../api/usuarios";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l9-9 9 9M4.5 10.5V19a1.5 1.5 0 001.5 1.5h4.5V15h3v5.5H18A1.5 1.5 0 0019.5 19v-8.5" /></svg> },
@@ -13,7 +13,7 @@ const navItems = [
   { to: "/finanzas", label: "Finanzas", rootOnly: true, icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
 ];
 
-const FORM_VACIO = { nombre: "", apellido: "", username: "", password: "" };
+const FORM_VACIO = { nombre: "", apellido: "", username: "", password: "", dni: "" };
 const INPUT_S = { width: "100%", backgroundColor: "#0f0f0f", border: "1px solid #333", borderRadius: "7px", color: "#fff", padding: "8px 11px", fontSize: "13px", outline: "none", boxSizing: "border-box" };
 const LABEL_S = { display: "block", fontSize: "11px", color: "#9ca3af", marginBottom: "4px", fontWeight: 600 };
 
@@ -26,6 +26,12 @@ function ModalGestion({ onClose }) {
   const [lista, setLista]       = useState([]);
   const [cargLista, setCargL]   = useState(false);
   const [confirmar, setConfirm] = useState(null);
+  // Estado para reseteo de contraseña de trabajador
+  const [resetPass, setResetPass]       = useState(null);  // trabajador al que se le resetea
+  const [resetVal, setResetVal]         = useState("");     // nueva contraseña
+  const [resetError, setResetError]     = useState("");
+  const [resetExito, setResetExito]     = useState("");
+  const [resetGuard, setResetGuard]     = useState(false);
 
   async function cargarLista() {
     setCargL(true);
@@ -36,15 +42,40 @@ function ModalGestion({ onClose }) {
 
   function cambiar(k, v) { setForm(p => ({ ...p, [k]: v })); }
 
+  function abrirReset(t) {
+    setResetPass(t);
+    setResetVal("");
+    setResetError("");
+    setResetExito("");
+    setConfirm(null);
+  }
+
+  async function guardarReset(e) {
+    e.preventDefault();
+    setResetError(""); setResetExito("");
+    if (!resetVal || resetVal.length < 4) return setResetError("Mín. 4 caracteres.");
+    setResetGuard(true);
+    try {
+      await actualizarUsuario(resetPass.id_usuario, { password: resetVal });
+      setResetExito(`✓ Contraseña de @${resetPass.username} actualizada.`);
+      setResetVal("");
+      setTimeout(() => { setResetPass(null); setResetExito(""); }, 2500);
+    } catch (e) {
+      setResetError(e?.response?.data?.detail || "Error al cambiar la contraseña.");
+    } finally { setResetGuard(false); }
+  }
+
   async function crear(e) {
     e.preventDefault();
     setError(""); setExito("");
     if (!form.nombre.trim() || !form.apellido.trim()) return setError("Nombre y apellido son obligatorios.");
     if (!form.username.trim()) return setError("El usuario es obligatorio.");
     if (form.password.length < 6) return setError("La contraseña debe tener al menos 6 caracteres.");
+    if (!form.dni.trim()) return setError("El DNI es obligatorio para que el trabajador pueda recuperar su contraseña.");
+    if (!/^\d{6,11}$/.test(form.dni.trim())) return setError("El DNI debe contener entre 6 y 11 dígitos numéricos.");
     setGuard(true);
     try {
-      await crearUsuario({ nombre: form.nombre.trim(), apellido: form.apellido.trim(), username: form.username.trim(), password: form.password, rol: "admin" });
+      await crearUsuario({ nombre: form.nombre.trim(), apellido: form.apellido.trim(), username: form.username.trim(), password: form.password, rol: "admin", dni: form.dni.trim() });
       setExito(`✓ Cuenta "${form.username.trim()}" creada correctamente.`);
       setForm(FORM_VACIO);
       setTimeout(() => setExito(""), 4000);
@@ -104,13 +135,33 @@ function ModalGestion({ onClose }) {
               </div>
             </div>
 
-            <div style={{ marginBottom: 10 }}>
-              <label style={LABEL_S}>Usuario (para el login)</label>
-              <input style={INPUT_S} value={form.username} onChange={e => cambiar("username", e.target.value)} placeholder="juan.perez" autoComplete="off" />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+              <div>
+                <label style={LABEL_S}>Nombre de usuario</label>
+                <input style={INPUT_S} value={form.username} onChange={e => cambiar("username", e.target.value)} placeholder="juan.perez" autoComplete="off" />
+              </div>
+              <div>
+                <label style={LABEL_S}>Contraseña</label>
+                <input style={INPUT_S} type="password" value={form.password} onChange={e => cambiar("password", e.target.value)} placeholder="Mín. 6 caracteres" autoComplete="new-password" />
+              </div>
             </div>
-            <div style={{ marginBottom: 16 }}>
-              <label style={LABEL_S}>Contraseña</label>
-              <input style={INPUT_S} type="password" value={form.password} onChange={e => cambiar("password", e.target.value)} placeholder="Mín. 6 caracteres" autoComplete="new-password" />
+
+            <div style={{ marginBottom: 6 }}>
+              <label style={LABEL_S}>DNI <span style={{ color: "#f97316" }}>*</span></label>
+              <input
+                style={INPUT_S}
+                value={form.dni}
+                onChange={e => cambiar("dni", e.target.value.replace(/\D/g, ""))}
+                placeholder="Ej: 12345678"
+                autoComplete="off"
+                maxLength={11}
+              />
+            </div>
+            <div style={{ marginBottom: 14, display: "flex", alignItems: "flex-start", gap: 5 }}>
+              <svg style={{ width: 13, height: 13, color: "#f97316", flexShrink: 0, marginTop: 2 }} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+              </svg>
+              <span style={{ fontSize: 10, color: "#6b7280", lineHeight: 1.4 }}>El DNI será el código de recuperación de contraseña del trabajador.</span>
             </div>
 
             <button type="submit" disabled={guardando} style={{
@@ -136,15 +187,16 @@ function ModalGestion({ onClose }) {
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {lista.map(t => (
-                  <div key={t.id_usuario} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: 8, backgroundColor: "#111", border: "1px solid #1f1f1f" }}>
+                  <div key={t.id_usuario} style={{ borderRadius: 8, backgroundColor: "#111", border: "1px solid #1f1f1f", overflow: "hidden" }}>
+                    {/* Fila principal del trabajador */}
                     {confirmar?.id_usuario === t.id_usuario ? (
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, width: "100%" }}>
-                        <span style={{ fontSize: 11, color: "#ef4444", flex: 1 }}>¿Eliminar {t.username}?</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 12px" }}>
+                        <span style={{ fontSize: 11, color: "#ef4444", flex: 1 }}>¿Eliminar @{t.username}?</span>
                         <button onClick={() => eliminar(t)} style={{ padding: "3px 8px", borderRadius: 5, border: "none", backgroundColor: "#ef4444", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Sí</button>
                         <button onClick={() => setConfirm(null)} style={{ padding: "3px 8px", borderRadius: 5, border: "none", backgroundColor: "#2a2a2a", color: "#9ca3af", fontSize: 11, cursor: "pointer" }}>No</button>
                       </div>
                     ) : (
-                      <>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px" }}>
                         <div style={{ flex: 1 }}>
                           <p style={{ fontSize: 13, fontWeight: 600, color: "#fff", margin: 0 }}>{t.nombre || ""} {t.apellido || ""}</p>
                           <p style={{ fontSize: 11, color: "#3b82f6", margin: 0, fontFamily: "monospace" }}>@{t.username}</p>
@@ -154,10 +206,46 @@ function ModalGestion({ onClose }) {
                             </p>
                           )}
                         </div>
-                        <button onClick={() => setConfirm(t)} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid #ef444433", backgroundColor: "#ef444415", color: "#ef4444", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
-                          Eliminar
-                        </button>
-                      </>
+                        <div style={{ display: "flex", gap: 5 }}>
+                          <button
+                            onClick={() => resetPass?.id_usuario === t.id_usuario ? setResetPass(null) : abrirReset(t)}
+                            title="Resetear contraseña"
+                            style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid #f9731633", backgroundColor: "#f9731615", color: "#f97316", fontSize: 11, fontWeight: 600, cursor: "pointer" }}
+                          >
+                            🔑
+                          </button>
+                          <button onClick={() => setConfirm(t)} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid #ef444433", backgroundColor: "#ef444415", color: "#ef4444", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+                            Eliminar
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Panel de reseteo de contraseña (expandible) */}
+                    {resetPass?.id_usuario === t.id_usuario && (
+                      <form onSubmit={guardarReset} style={{ padding: "0 12px 12px", borderTop: "1px solid #1f1f1f" }}>
+                        <p style={{ fontSize: 11, color: "#f97316", fontWeight: 600, margin: "8px 0 6px" }}>Nueva contraseña para @{t.username}</p>
+                        {resetExito && <div style={{ marginBottom: 6, fontSize: 11, color: "#22c55e" }}>{resetExito}</div>}
+                        {resetError && <div style={{ marginBottom: 6, fontSize: 11, color: "#ef4444" }}>{resetError}</div>}
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <input
+                            type="password"
+                            value={resetVal}
+                            onChange={e => setResetVal(e.target.value)}
+                            placeholder="Mín. 4 caracteres"
+                            autoComplete="new-password"
+                            autoFocus
+                            style={{ flex: 1, backgroundColor: "#0f0f0f", border: "1px solid #333", borderRadius: 6, color: "#fff", padding: "6px 9px", fontSize: 12, outline: "none" }}
+                          />
+                          <button
+                            type="submit"
+                            disabled={resetGuard}
+                            style={{ padding: "6px 12px", borderRadius: 6, border: "none", backgroundColor: resetGuard ? "#4b5563" : "#f97316", color: "#fff", fontSize: 11, fontWeight: 700, cursor: resetGuard ? "not-allowed" : "pointer" }}
+                          >
+                            {resetGuard ? "..." : "Guardar"}
+                          </button>
+                        </div>
+                      </form>
                     )}
                   </div>
                 ))}
@@ -171,7 +259,7 @@ function ModalGestion({ onClose }) {
 }
 
 function Layout({ children }) {
-  const { usuario, logout } = useContext(AuthContext);
+  const { usuario, logout, setUsuario } = useContext(AuthContext);
   const [modalAbierto, setModal]   = useState(false);
   const [perfilAbierto, setPerfil] = useState(false);
   const [perfil, setPData]         = useState(null);
@@ -181,9 +269,16 @@ function Layout({ children }) {
   const [errorP, setErrorP]        = useState("");
   const fotoRef = useRef(null);
 
+  // Estado para credenciales de acceso
+  const [formCred, setFormCred]       = useState({ username: "", password: "", confirmPassword: "" });
+  const [guardandoCred, setGuardCred] = useState(false);
+  const [exitoCred, setExitoCred]     = useState("");
+  const [errorCred, setErrorCred]     = useState("");
+
   async function abrirPerfil() {
     setPerfil(true);
     setExitoP(""); setErrorP("");
+    setExitoCred(""); setErrorCred("");
     try {
       const data = await getMe();
       setPData(data);
@@ -196,10 +291,12 @@ function Layout({ children }) {
         sueldo_mensual: data.sueldo_mensual || "",
         foto: data.foto || "",
       });
+      setFormCred({ username: data.username || "", password: "", confirmPassword: "" });
     } catch (e) { console.error(e); }
   }
 
   function cambiarP(k, v) { setFormP(p => ({ ...p, [k]: v })); }
+  function cambiarCred(k, v) { setFormCred(p => ({ ...p, [k]: v })); }
 
   function manejarFoto(e) {
     const file = e.target.files[0];
@@ -227,6 +324,42 @@ function Layout({ children }) {
     } catch (e) {
       setErrorP(e?.response?.data?.detail || "Error al guardar el perfil.");
     } finally { setGuardP(false); }
+  }
+
+  async function actualizarCredenciales(e) {
+    e.preventDefault();
+    setErrorCred(""); setExitoCred("");
+
+    if (!formCred.username.trim()) return setErrorCred("El nombre de usuario no puede estar vacío.");
+
+    // Si se ingresó contraseña, validar que coincidan y longitud mínima
+    if (formCred.password || formCred.confirmPassword) {
+      if (formCred.password.length < 4) return setErrorCred("La contraseña debe tener al menos 4 caracteres.");
+      if (formCred.password !== formCred.confirmPassword) return setErrorCred("Las contraseñas no coinciden.");
+    }
+
+    setGuardCred(true);
+    try {
+      const payload = { username: formCred.username.trim() };
+      if (formCred.password) payload.password = formCred.password;
+
+      await updateMe(payload);
+
+      // Actualizar el contexto y localStorage con el nuevo username
+      if (formCred.username.trim() !== usuario?.username) {
+        localStorage.setItem("usuario", formCred.username.trim());
+        if (setUsuario) setUsuario(prev => ({ ...prev, username: formCred.username.trim() }));
+      }
+
+      setExitoCred("✓ Credenciales actualizadas correctamente.");
+      setFormCred(prev => ({ ...prev, password: "", confirmPassword: "" }));
+      setTimeout(() => setExitoCred(""), 4000);
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      if (typeof detail === "string") setErrorCred(detail);
+      else if (Array.isArray(detail)) setErrorCred(detail.map(d => d?.msg ?? JSON.stringify(d)).join(" | "));
+      else setErrorCred("Error al actualizar las credenciales.");
+    } finally { setGuardCred(false); }
   }
 
   const esRoot = usuario?.rol === "root";
@@ -295,6 +428,71 @@ function Layout({ children }) {
 
               <button type="submit" disabled={guardandoP} style={{ width: "100%", padding: "9px", borderRadius: 8, border: "none", cursor: guardandoP ? "not-allowed" : "pointer", backgroundColor: guardandoP ? "#4b5563" : "#f97316", color: "#fff", fontSize: 13, fontWeight: 700, marginTop: 6 }}>
                 {guardandoP ? "Guardando..." : "Guardar cambios"}
+              </button>
+            </form>
+
+            {/* ── Sección: Credenciales de acceso ── */}
+            <form onSubmit={actualizarCredenciales} style={{ padding: "0 20px 20px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, paddingTop: 16, borderTop: "1px solid #2a2a2a" }}>
+                <svg style={{ width: 16, height: 16, color: "#f97316" }} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                </svg>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>Credenciales de acceso</span>
+              </div>
+
+              {exitoCred && <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 7, backgroundColor: "#16a34a22", color: "#22c55e", fontSize: 12, border: "1px solid #22c55e33" }}>{exitoCred}</div>}
+              {errorCred && <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 7, backgroundColor: "#ef444422", color: "#ef4444", fontSize: 12, border: "1px solid #ef444433" }}>{errorCred}</div>}
+
+              <div style={{ marginBottom: 10 }}>
+                <label style={LS}>Nombre de usuario</label>
+                <input
+                  style={IS}
+                  value={formCred.username}
+                  onChange={e => cambiarCred("username", e.target.value)}
+                  placeholder="Ej: admin_gym"
+                  autoComplete="off"
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                <div>
+                  <label style={LS}>Nueva contraseña</label>
+                  <input
+                    style={IS}
+                    type="password"
+                    value={formCred.password}
+                    onChange={e => cambiarCred("password", e.target.value)}
+                    placeholder="Mín. 4 caracteres"
+                    autoComplete="new-password"
+                  />
+                </div>
+                <div>
+                  <label style={LS}>Confirmar contraseña</label>
+                  <input
+                    style={IS}
+                    type="password"
+                    value={formCred.confirmPassword}
+                    onChange={e => cambiarCred("confirmPassword", e.target.value)}
+                    placeholder="Repetir contraseña"
+                    autoComplete="new-password"
+                  />
+                </div>
+              </div>
+
+              <p style={{ fontSize: 11, color: "#6b7280", marginBottom: 12, display: "flex", alignItems: "flex-start", gap: 5 }}>
+                <svg style={{ width: 14, height: 14, color: "#f97316", flexShrink: 0, marginTop: 1 }} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                </svg>
+                <span>Dejá la contraseña vacía si solo querés cambiar el nombre de usuario.</span>
+              </p>
+
+              <button type="submit" disabled={guardandoCred} style={{
+                width: "100%", padding: "9px", borderRadius: 8, border: "none",
+                cursor: guardandoCred ? "not-allowed" : "pointer",
+                backgroundColor: guardandoCred ? "#4b5563" : "#f97316",
+                color: "#fff", fontSize: 13, fontWeight: 700,
+              }}>
+                {guardandoCred ? "Actualizando..." : "Actualizar credenciales"}
               </button>
             </form>
           </div>

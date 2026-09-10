@@ -56,6 +56,7 @@ class MembresiaOut(BaseModel):
     # Datos enriquecidos (opcionales, vendrán del JOIN)
     nombre_miembro: Optional[str] = None
     nombre_disciplina: Optional[str] = None
+    nombre_instructor: Optional[str] = None
 
     class Config:
         from_attributes = True

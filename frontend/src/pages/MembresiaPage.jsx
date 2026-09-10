@@ -3,7 +3,7 @@ import Layout from "../components/Layout";
 import { getMembresias, crearMembresia, actualizarMembresia, eliminarMembresia, renovarMembresia } from "../api/membresias";
 import { getMiembros } from "../api/miembros";
 import { getDisciplinas } from "../api/disciplinas";
-import api, { parsearError } from "../api/client";
+import { parsearError } from "../api/client";
 
 const CARD  = { backgroundColor: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: "12px" };
 const INPUT = {
@@ -66,9 +66,10 @@ const EMPTY_FORM = {
 };
 
 export default function MembresiaPage() {
-  const [membresias, setMembresias]   = useState([]);
-  const [miembros, setMiembros]       = useState([]);
-  const [disciplinas, setDisciplinas] = useState([]);
+  const [membresias, setMembresias]     = useState([]);
+  const [miembros, setMiembros]         = useState([]);
+  const [miembrosActivos, setMiembrosActivos] = useState([]);
+  const [disciplinas, setDisciplinas]   = useState([]);
 
   const [form, setForm]               = useState(EMPTY_FORM);
   const [editId, setEditId]           = useState(null);
@@ -83,18 +84,13 @@ export default function MembresiaPage() {
   async function cargar() {
     setCargando(true);
     try {
-      const [mem, mi, di] = await Promise.all([
-        getMembresias(), getMiembros(), getDisciplinas(),
+      const [mem, mi, miActivos, di] = await Promise.all([
+        getMembresias(), getMiembros(), getMiembros(true), getDisciplinas(),
       ]);
-      setMembresias(mem); setMiembros(mi); setDisciplinas(di);
+      setMembresias(mem); setMiembros(mi); setMiembrosActivos(miActivos); setDisciplinas(di);
     } catch { setError("Error al cargar datos."); }
     finally { setCargando(false); }
   }
-
-  // Verificar vencidos y desactivar miembros automáticamente al cargar la página
-  useEffect(() => {
-    api.post("/membresias/check-vencidos").catch(() => {});
-  }, []);
 
   function abrirNuevo() {
     setForm(EMPTY_FORM); setEditId(null); setError(""); setPanelAbierto(true);
@@ -332,13 +328,19 @@ export default function MembresiaPage() {
               {/* Miembro */}
               <div>
                 <label style={LABEL}>Miembro *</label>
+                {!editId && miembrosActivos.length === 0 && (
+                  <div className="px-3 py-2 rounded-lg text-xs mb-2"
+                    style={{ backgroundColor: "#78350f22", color: "#fbbf24", border: "1px solid #78350f44" }}>
+                    ⚠️ No hay miembros activos. Reactivá un miembro desde la sección <strong>Miembros</strong> para poder crear una membresía.
+                  </div>
+                )}
                 <select style={{ ...INPUT, cursor: "pointer" }} required
                   value={form.id_miembro}
                   onChange={e => setForm(p => ({ ...p, id_miembro: e.target.value }))}
                   onFocus={e => e.target.style.borderColor = "#f97316"}
                   onBlur={e => e.target.style.borderColor = "#2a2a2a"}>
                   <option value="">— Seleccionar —</option>
-                  {miembros.map(m => (
+                  {(editId ? miembros : miembrosActivos).map(m => (
                     <option key={m.id_miembro} value={m.id_miembro}>
                       {m.nombre} {m.apellido} {m.dni ? `(${m.dni})` : ""}
                     </option>

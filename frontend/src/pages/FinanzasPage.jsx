@@ -227,7 +227,17 @@ export default function FinanzasPage() {
   const [modalGasto, setModalGasto] = useState(false);
   const [eliminando, setEliminando] = useState(null);
 
+  // Cierre de caja
+  const [cierres, setCierres]           = useState([]);
+  const [mesCerrado, setMesCerrado]     = useState(false);
+  const [cerrando, setCerrando]         = useState(false);
+  const [errorCierre, setErrorCierre]   = useState("");
+  const [okCierre, setOkCierre]         = useState("");
+  const [desbloqueando, setDesbloqueando] = useState(null);
+
   useEffect(() => { cargar(anio, mes); }, [anio, mes]); // eslint-disable-line
+  useEffect(() => { cargarCierres(); }, []);             // eslint-disable-line
+  useEffect(() => { verificarCierre(anio, mes); }, [anio, mes]); // eslint-disable-line
 
   async function cargar(a, m) {
     setCarg(true); setError("");
@@ -238,6 +248,48 @@ export default function FinanzasPage() {
       setError("Error al cargar los datos financieros.");
       console.error(e);
     } finally { setCarg(false); }
+  }
+
+  async function cargarCierres() {
+    try {
+      const res = await api.get("/api/cierres/");
+      setCierres(res.data);
+    } catch { /* silencioso */ }
+  }
+
+  async function verificarCierre(a, m) {
+    try {
+      const res = await api.get(`/api/cierres/verificar?anio=${a}&mes=${m}`);
+      setMesCerrado(res.data.cerrado);
+    } catch { setMesCerrado(false); }
+  }
+
+  async function handleCerrarMes() {
+    setErrorCierre(""); setOkCierre("");
+    if (!window.confirm(`¿Cerrar ${MESES_ES[mes - 1]} ${anio}? Esta acción guarda un resumen inmutable del período.`)) return;
+    setCerrando(true);
+    try {
+      await api.post(`/api/cierres/mensual?anio=${anio}&mes=${mes}`);
+      setOkCierre(`¡Cierre de ${MESES_ES[mes - 1]} ${anio} guardado exitosamente!`);
+      setMesCerrado(true);
+      await cargarCierres();
+    } catch (e) {
+      const msg = e?.response?.data?.detail || "Error al ejecutar el cierre.";
+      setErrorCierre(msg);
+    } finally { setCerrando(false); }
+  }
+
+  async function handleDesbloquear(idCierre, periodo) {
+    if (!window.confirm(`¿Desbloquear el período ${periodo}? El cierre será eliminado para permitir correcciones. Los datos (membresías, gastos, etc.) NO se borran.`)) return;
+    setDesbloqueando(idCierre);
+    try {
+      await api.delete(`/api/cierres/${idCierre}`);
+      await cargarCierres();
+      await verificarCierre(anio, mes);
+      setOkCierre(""); setErrorCierre("");
+    } catch (e) {
+      setErrorCierre(e?.response?.data?.detail || "Error al desbloquear.");
+    } finally { setDesbloqueando(null); }
   }
 
   function irAnterior() {
@@ -506,6 +558,130 @@ export default function FinanzasPage() {
           )}
         </>
       )}
+
+      {/* ══════════ SECCIÓN: CIERRE DE CAJA ══════════ */}
+      <div style={{ marginTop: 32, borderTop: "1px solid #2a2a2a", paddingTop: 28 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div>
+            <p style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>
+              📊 Cierre de Caja
+            </p>
+            <p style={{ color: "#9ca3af", fontSize: 13, margin: 0 }}>
+              Guarda un resumen histórico inmutable del período seleccionado.
+            </p>
+          </div>
+
+          {/* Botón cerrar / estado cerrado */}
+          {mesCerrado ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "8px 16px", borderRadius: 8,
+                backgroundColor: "#16a34a22", border: "1px solid #16a34a44",
+                color: "#22c55e", fontSize: 13, fontWeight: 700,
+              }}>
+                ✅ {MESES_ES[mes - 1]} {anio} cerrado
+              </span>
+            </div>
+          ) : (
+            <button
+              onClick={handleCerrarMes}
+              disabled={cerrando}
+              style={{
+                padding: "9px 20px", borderRadius: 8, border: "none",
+                backgroundColor: cerrando ? "#4b5563" : "#7c3aed",
+                color: "#fff", fontSize: 13, fontWeight: 700, cursor: cerrando ? "not-allowed" : "pointer",
+                display: "flex", alignItems: "center", gap: 8,
+              }}
+              onMouseEnter={e => { if (!cerrando) e.currentTarget.style.backgroundColor = "#6d28d9"; }}
+              onMouseLeave={e => { if (!cerrando) e.currentTarget.style.backgroundColor = "#7c3aed"; }}
+            >
+              {cerrando ? "Cerrando..." : `🔒 Cerrar ${MESES_ES[mes - 1]} ${anio}`}
+            </button>
+          )}
+        </div>
+
+        {/* Mensajes de feedback */}
+        {errorCierre && (
+          <div style={{ marginBottom: 12, padding: "10px 14px", borderRadius: 8, backgroundColor: "#7f1d1d22", border: "1px solid #ef444444", color: "#ef4444", fontSize: 13 }}>
+            ⚠️ {errorCierre}
+          </div>
+        )}
+        {okCierre && (
+          <div style={{ marginBottom: 12, padding: "10px 14px", borderRadius: 8, backgroundColor: "#16a34a22", border: "1px solid #16a34a44", color: "#22c55e", fontSize: 13 }}>
+            ✅ {okCierre}
+          </div>
+        )}
+
+        {/* Aviso de inmutabilidad */}
+        <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 8, backgroundColor: "#78350f22", border: "1px solid #78350f44", color: "#fbbf24", fontSize: 12 }}>
+          ⚠️ Una vez ejecutado el cierre, el resumen no puede modificarse. Se recomienda realizarlo el último día de cada mes.
+        </div>
+
+        {/* Historial de cierres */}
+        <p style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
+          📁 Historial de cierres
+        </p>
+
+        {cierres.length === 0 ? (
+          <div style={{ ...CARD, textAlign: "center", padding: 28 }}>
+            <span style={{ fontSize: 36 }}>📂</span>
+            <p style={{ color: "#4b5563", fontSize: 13, marginTop: 10 }}>No hay cierres registrados aún.</p>
+            <p style={{ color: "#374151", fontSize: 12 }}>Los cierres ejecutados aparecerán aquí como historial permanente.</p>
+          </div>
+        ) : (
+          <div style={{ ...CARD, padding: 0, overflow: "hidden" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid #2a2a2a", backgroundColor: "#111" }}>
+                  {["Período", "Tipo", "Ingresos", "Egresos", "Balance", "Ejecutado el", ""].map(h => (
+                    <th key={h} style={{ textAlign: "left", padding: "10px 16px", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#6b7280" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {cierres.map((c, idx) => {
+                  const [cAnio, cMes] = c.periodo.split("-").map(Number);
+                  const nombrePeriodo = `${MESES_ES[cMes - 1]} ${cAnio}`;
+                  const esPositivo = c.balance_neto >= 0;
+                  return (
+                    <tr key={c.id_cierre} style={{ borderBottom: idx < cierres.length - 1 ? "1px solid #1f1f1f" : "none" }}>
+                      <td style={{ padding: "11px 16px", color: "#fff", fontWeight: 700, fontSize: 14 }}>{nombrePeriodo}</td>
+                      <td style={{ padding: "11px 16px" }}>
+                        <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, backgroundColor: "#7c3aed22", color: "#a78bfa", fontWeight: 700 }}>
+                          {c.tipo}
+                        </span>
+                      </td>
+                      <td style={{ padding: "11px 16px", color: "#22c55e", fontWeight: 700 }}>
+                        ${Number(c.total_ingresos).toLocaleString("es-AR")}
+                      </td>
+                      <td style={{ padding: "11px 16px", color: "#f97316", fontWeight: 700 }}>
+                        -${Number(c.total_egresos).toLocaleString("es-AR")}
+                      </td>
+                      <td style={{ padding: "11px 16px", color: esPositivo ? "#22c55e" : "#ef4444", fontWeight: 800, fontSize: 15 }}>
+                        {esPositivo ? "+" : ""}${Number(c.balance_neto).toLocaleString("es-AR")}
+                      </td>
+                      <td style={{ padding: "11px 16px", color: "#6b7280", fontSize: 12 }}>
+                        {new Date(c.fecha_ejecucion).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </td>
+                      <td style={{ padding: "11px 16px" }}>
+                        <button
+                          disabled={desbloqueando === c.id_cierre}
+                          onClick={() => handleDesbloquear(c.id_cierre, nombrePeriodo)}
+                          style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #ef444433", backgroundColor: "#ef444415", color: "#ef4444", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
+                        >
+                          {desbloqueando === c.id_cierre ? "..." : "Desbloquear"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {modalGasto && (
         <ModalGasto
           trabajadores={datos?.agenda_sueldos || []}
