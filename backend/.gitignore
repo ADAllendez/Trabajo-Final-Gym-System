@@ -1,7 +1,7 @@
 # Entornos virtuales
 venv/
 .venv/
-env/
+.env/
 
 # Caché de Python
 __pycache__/
