@@ -137,10 +137,19 @@ export default function MembresiaPage() {
     catch (err) { setError(parsearError(err, "Error al renovar.")); }
   }
 
+  // Una membresía está protegida si su vencimiento es hoy o en el futuro
+  function estaProtegida(m) {
+    if (!m.fecha_vencimiento) return false;
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const venc = new Date(m.fecha_vencimiento + "T12:00:00");
+    return venc >= hoy;
+  }
+
   async function handleEliminar(id) {
-    if (!window.confirm("¿Eliminar esta membresía?")) return;
+    if (!window.confirm("¿Eliminar esta membresía permanentemente? Esta acción no se puede deshacer.")) return;
     try { await eliminarMembresia(id); await cargar(); }
-    catch { setError("Error al eliminar."); }
+    catch (err) { setError(parsearError(err, "Error al eliminar.")); }
   }
 
   const filtradas = membresias.filter(m => {
@@ -279,11 +288,32 @@ export default function MembresiaPage() {
                           onMouseLeave={e => e.currentTarget.style.color = "#9ca3af"}>
                           Editar
                         </button>
-                        <button onClick={() => handleEliminar(m.id_membresia)}
-                          className="px-2.5 py-1.5 rounded-lg text-xs font-medium"
-                          style={{ backgroundColor: "#7f1d1d22", color: "#ef4444", border: "1px solid #7f1d1d44" }}>
-                          Eliminar
-                        </button>
+                        {estaProtegida(m) ? (
+                          <span
+                            title="No se puede eliminar: la membresía está activa o tiene vencimiento futuro"
+                            style={{ display: "inline-block", cursor: "not-allowed" }}>
+                            <button
+                              disabled
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-medium"
+                              style={{
+                                backgroundColor: "#1f1f1f",
+                                color: "#4b5563",
+                                border: "1px solid #2a2a2a",
+                                opacity: 0.5,
+                                pointerEvents: "none",
+                              }}>
+                              Eliminar
+                            </button>
+                          </span>
+                        ) : (
+                          <button onClick={() => handleEliminar(m.id_membresia)}
+                            className="px-2.5 py-1.5 rounded-lg text-xs font-medium"
+                            style={{ backgroundColor: "#7f1d1d22", color: "#ef4444", border: "1px solid #7f1d1d44" }}
+                            onMouseEnter={e => e.currentTarget.style.backgroundColor = "#7f1d1d44"}
+                            onMouseLeave={e => e.currentTarget.style.backgroundColor = "#7f1d1d22"}>
+                            Eliminar
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
