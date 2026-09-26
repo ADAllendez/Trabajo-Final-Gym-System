@@ -3,6 +3,7 @@ import Layout from "../components/Layout";
 import { getMembresias, crearMembresia, actualizarMembresia, eliminarMembresia, renovarMembresia } from "../api/membresias";
 import { getMiembros } from "../api/miembros";
 import { getDisciplinas } from "../api/disciplinas";
+import { crearPagoDia } from "../api/pagosDia";
 import { parsearError } from "../api/client";
 
 const CARD  = { backgroundColor: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: "12px" };
@@ -79,6 +80,11 @@ export default function MembresiaPage() {
   const [error, setError]             = useState("");
   const [cargando, setCargando]       = useState(false);
 
+  // ── Pago por día ──
+  const [panelPagoDia, setPanelPagoDia] = useState(false);
+  const [formPagoDia, setFormPagoDia]   = useState({ nombre_visitante: "", disciplina: "", monto: "", fecha: new Date().toISOString().slice(0, 10), notas: "" });
+  const [errorPago, setErrorPago]       = useState("");
+
   useEffect(() => { cargar(); }, []);
 
   async function cargar() {
@@ -137,6 +143,23 @@ export default function MembresiaPage() {
     catch (err) { setError(parsearError(err, "Error al renovar.")); }
   }
 
+  async function handleSubmitPagoDia(e) {
+    e.preventDefault(); setErrorPago("");
+    try {
+      await crearPagoDia({
+        nombre_visitante: formPagoDia.nombre_visitante,
+        disciplina: formPagoDia.disciplina || null,
+        monto: parseFloat(formPagoDia.monto) || 0,
+        fecha: formPagoDia.fecha,
+        notas: formPagoDia.notas || null,
+      });
+      setPanelPagoDia(false);
+      setFormPagoDia({ nombre_visitante: "", disciplina: "", monto: "", fecha: new Date().toISOString().slice(0, 10), notas: "" });
+    } catch {
+      setErrorPago("Error al registrar el pago.");
+    }
+  }
+
   // Una membresía está protegida si su vencimiento es hoy o en el futuro
   function estaProtegida(m) {
     if (!m.fecha_vencimiento) return false;
@@ -176,16 +199,28 @@ export default function MembresiaPage() {
             {membresias.length} membresía{membresias.length !== 1 ? "s" : ""} en total
           </p>
         </div>
-        <button onClick={abrirNuevo}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white"
-          style={{ backgroundColor: "#f97316" }}
-          onMouseEnter={e => e.currentTarget.style.backgroundColor = "#ea6c0a"}
-          onMouseLeave={e => e.currentTarget.style.backgroundColor = "#f97316"}>
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          Nueva membresía
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => { setPanelPagoDia(true); setErrorPago(""); }}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
+            style={{ backgroundColor: "#1a1a1a", border: "1px solid #16a34a44", color: "#22c55e" }}
+            onMouseEnter={e => e.currentTarget.style.backgroundColor = "#16a34a22"}
+            onMouseLeave={e => e.currentTarget.style.backgroundColor = "#1a1a1a"}>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Pago por día
+          </button>
+          <button onClick={abrirNuevo}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white"
+            style={{ backgroundColor: "#f97316" }}
+            onMouseEnter={e => e.currentTarget.style.backgroundColor = "#ea6c0a"}
+            onMouseLeave={e => e.currentTarget.style.backgroundColor = "#f97316"}>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Nueva membresía
+          </button>
+        </div>
       </div>
 
       {/* Chips de estado */}
@@ -438,6 +473,95 @@ export default function MembresiaPage() {
                   onMouseEnter={e => e.currentTarget.style.backgroundColor = "#ea6c0a"}
                   onMouseLeave={e => e.currentTarget.style.backgroundColor = "#f97316"}>
                   {editId ? "Guardar cambios" : "Crear membresía"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Panel lateral: Pago por día */}
+      {panelPagoDia && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex" }}>
+          <div style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)" }} onClick={() => setPanelPagoDia(false)} />
+          <div style={{ width: 400, display: "flex", flexDirection: "column", height: "100%", overflowY: "auto", backgroundColor: "#111111", borderLeft: "1px solid #2a2a2a" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 24px", borderBottom: "1px solid #2a2a2a" }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#fff" }}>Registrar pago por día</h2>
+                <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>Clase suelta o visita de un día</p>
+              </div>
+              <button onClick={() => setPanelPagoDia(false)} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer" }}>
+                <svg style={{ width: 20, height: 20 }} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <form onSubmit={handleSubmitPagoDia} style={{ display: "flex", flexDirection: "column", flex: 1, padding: "20px 24px", gap: 16 }}>
+              {errorPago && (
+                <div style={{ padding: "8px 12px", borderRadius: 8, backgroundColor: "#7f1d1d", color: "#fca5a5", fontSize: 13 }}>{errorPago}</div>
+              )}
+              <div>
+                <label style={{ fontSize: 11, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5, display: "block" }}>Nombre del visitante *</label>
+                <input type="text" required placeholder="Ej: Juan Pérez"
+                  style={{ backgroundColor: "#111", border: "1px solid #2a2a2a", borderRadius: 8, color: "#fff", padding: "9px 12px", fontSize: 13, width: "100%", boxSizing: "border-box" }}
+                  value={formPagoDia.nombre_visitante}
+                  onChange={e => setFormPagoDia(p => ({ ...p, nombre_visitante: e.target.value }))}
+                  onFocus={e => e.target.style.borderColor = "#22c55e"}
+                  onBlur={e => e.target.style.borderColor = "#2a2a2a"} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5, display: "block" }}>Disciplina</label>
+                <select
+                  style={{ backgroundColor: "#111", border: "1px solid #2a2a2a", borderRadius: 8, color: "#fff", padding: "9px 12px", fontSize: 13, width: "100%", cursor: "pointer" }}
+                  value={formPagoDia.disciplina}
+                  onChange={e => setFormPagoDia(p => ({ ...p, disciplina: e.target.value }))}
+                  onFocus={e => e.target.style.borderColor = "#22c55e"}
+                  onBlur={e => e.target.style.borderColor = "#2a2a2a"}>
+                  <option value="">— Sin especificar —</option>
+                  {disciplinas.map(d => (
+                    <option key={d.id_disciplina} value={d.nombre}>{d.nombre}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: 11, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5, display: "block" }}>Monto ($) *</label>
+                  <input type="number" min="0" step="0.01" required placeholder="0.00"
+                    style={{ backgroundColor: "#111", border: "1px solid #2a2a2a", borderRadius: 8, color: "#fff", padding: "9px 12px", fontSize: 13, width: "100%", boxSizing: "border-box" }}
+                    value={formPagoDia.monto}
+                    onChange={e => setFormPagoDia(p => ({ ...p, monto: e.target.value }))}
+                    onFocus={e => e.target.style.borderColor = "#22c55e"}
+                    onBlur={e => e.target.style.borderColor = "#2a2a2a"} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5, display: "block" }}>Fecha *</label>
+                  <input type="date" required
+                    style={{ backgroundColor: "#111", border: "1px solid #2a2a2a", borderRadius: 8, color: "#fff", padding: "9px 12px", fontSize: 13, width: "100%", boxSizing: "border-box" }}
+                    value={formPagoDia.fecha}
+                    onChange={e => setFormPagoDia(p => ({ ...p, fecha: e.target.value }))}
+                    onFocus={e => e.target.style.borderColor = "#22c55e"}
+                    onBlur={e => e.target.style.borderColor = "#2a2a2a"} />
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5, display: "block" }}>Notas (opcional)</label>
+                <input placeholder="Ej: Vino con un amigo, preguntó por mensualidad..."
+                  style={{ backgroundColor: "#111", border: "1px solid #2a2a2a", borderRadius: 8, color: "#fff", padding: "9px 12px", fontSize: 13, width: "100%", boxSizing: "border-box" }}
+                  value={formPagoDia.notas}
+                  onChange={e => setFormPagoDia(p => ({ ...p, notas: e.target.value }))}
+                  onFocus={e => e.target.style.borderColor = "#22c55e"}
+                  onBlur={e => e.target.style.borderColor = "#2a2a2a"} />
+              </div>
+              <div style={{ marginTop: "auto", paddingTop: 16, display: "flex", gap: 12, borderTop: "1px solid #2a2a2a" }}>
+                <button type="button" onClick={() => setPanelPagoDia(false)}
+                  style={{ flex: 1, padding: "10px", borderRadius: 8, border: "1px solid #2a2a2a", backgroundColor: "#1f1f1f", color: "#9ca3af", fontWeight: 600, cursor: "pointer" }}>
+                  Cancelar
+                </button>
+                <button type="submit"
+                  style={{ flex: 2, padding: "10px", borderRadius: 8, border: "none", backgroundColor: "#22c55e", color: "#fff", fontWeight: 700, cursor: "pointer" }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = "#16a34a"}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = "#22c55e"}>
+                  Registrar pago
                 </button>
               </div>
             </form>
